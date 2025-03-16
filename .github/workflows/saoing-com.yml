@@ -36,6 +36,7 @@ jobs:
              --convert-links \
              --adjust-extension \
              --page-requisites \
+             --domains saoing.com,dtmb.saoing.com \  # 允许抓取的域名列表
              --no-parent \
              --tries=3 \
              --timeout=30 \
@@ -43,11 +44,17 @@ jobs:
              --retry-connrefused \
              --user-agent="Mozilla/5.0 (compatible; GitHub-Actions-Crawler)" \
              --no-check-certificate \
+             --span-hosts \  # 允许跨域名抓取
              -P $DIR_NAME \
-             http://www.saoing.com/ 2>&1 | tee wget.log || echo "Wget exited with code $? (non-fatal)"
-
+             http://www.saoing.com/ 2>&1 | tee wget.log || echo "Wget exited with code $? (non-fatal)" \
+             http://dtmb.saoing.com/  # 显式指定子域名入口
+             
         # 强制创建空目录（即使下载失败）
         touch $DIR_NAME/.gitkeep
+
+        # 修复子域名目录权限
+        chmod -R 755 $DIR_NAME
+        
 
     - name: Check directory content
       run: |
@@ -69,27 +76,41 @@ jobs:
         git push
 
 
-
     - name: Send Telegram notification
+      if: always()  # 无论成功失败都执行
       env:
-        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        #TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
-        #TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}    
+        TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+        TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
       run: |
-        # 添加执行状态判断
-        if [ -s "$DIR_NAME/index.htm" ]; then
+        # 获取工作流状态
+        if [ "${{ job.status }}" == "success" ]; then
           STATUS="✅ 成功"
-          FILE_INFO=$(du -sh $DIR_NAME)
+          FILE_INFO=$(du -sh $DIR_NAME 2>/dev/null || echo "无有效内容")
         else
-          STATUS="⚠️ 部分失败"
-          FILE_INFO="无有效内容"
+          STATUS="⚠️ 失败"
+          FILE_INFO="错误代码: ${{ job.status }}"
         fi
 
-        MESSAGE="网站抓取状态：$STATUS%0A- 日期: $(date +'%Y-%m-%d')%0A- 目录: $DIR_NAME%0A- 文件情况: $FILE_INFO%0A- 日志: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
-        
-        curl -s -X POST \
+        # 构建消息内容
+        MESSAGE="[网站抓取状态]%0A${STATUS}%0A"
+        MESSAGE+="- 日期: $(date +'%Y-%m-%d')%0A"
+        MESSAGE+="- 目录: ${DIR_NAME}%0A"
+        MESSAGE+="- 存储: ${FILE_INFO}%0A"
+        MESSAGE+="- 日志: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+
+        # 调试输出
+        echo "Sending Telegram message:"
+        echo "${MESSAGE}"
+
+        # 发送请求（带重试）
+        curl --retry 3 \
+          -X POST \
           "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage" \
           -d chat_id="${TG_CHAT_ID}" \
-          -d text="$MESSAGE"
+          -d text="${MESSAGE}" \
+          -d parse_mode="HTML" \
+          -o curl_output.txt
 
+        # 检查响应
+        echo "Curl response:"
+        cat curl_output.txt
