@@ -45,9 +45,13 @@ jobs:
              --user-agent="Mozilla/5.0 (compatible; GitHub-Actions-Crawler)" \
              --no-check-certificate \
              --span-hosts \  # 允许跨域名抓取
+             --reject-regex '%20' \  # 过滤包含空格的URL
+             --restrict-file-names=unix \  # 严格限制文件名
+             --quota=inf \
+             --retry-on-http-error=429,500-599 \
              -P $DIR_NAME \
-             http://www.saoing.com/ 2>&1 | tee wget.log || echo "Wget exited with code $? (non-fatal)" 
-             ## http://dtmb.saoing.com/  # 显式指定子域名入口
+             http://www.saoing.com/ \
+             http://dtmb.saoing.com/ 2>&1 | tee wget.log || echo "wget exited with code $?"
              
         # 强制创建空目录（即使下载失败）
         touch $DIR_NAME/.gitkeep
@@ -62,6 +66,14 @@ jobs:
         echo "Directory contents:"
         ls -lR $DIR_NAME || true
 
+    - name: Check downloaded content
+      run: |
+        echo "抓取目录内容："
+        ls -lR $DIR_NAME || true
+        [ -f "$DIR_NAME/www.saoing.com/index.html" ] || echo "警告：主站首页未抓取到"
+        [ -f "$DIR_NAME/dtmb.saoing.com/index.html" ] || echo "警告：子站首页未抓取到"
+
+        
     - name: Commit changes
       run: |
         git config --global user.name "GitHub Actions"
@@ -71,10 +83,16 @@ jobs:
         git remote set-url origin https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
         
         # 强制提交（允许空提交）
-        git add $DIR_NAME
-        git commit --allow-empty -m "Add crawl attempt: $DIR_NAME"
-        git push
-
+        #git add $DIR_NAME
+        #git commit --allow-empty -m "Add crawl attempt: $DIR_NAME"
+        #git push
+        # 仅当有内容变更时提交
+        if git add $DIR_NAME && git diff --cached --quiet; then
+          echo "没有内容变更，跳过提交"
+        else
+          git commit -m "Add crawl: $DIR_NAME [$(date +'%H:%M')]"
+          git push
+        fi
 
     - name: Send Telegram notification
       if: always()  # 无论成功失败都执行
