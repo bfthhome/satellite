@@ -46,8 +46,8 @@ jobs:
              --no-check-certificate \
              --span-hosts \  # 允许跨域名抓取
              -P $DIR_NAME \
-             http://www.saoing.com/ 2>&1 | tee wget.log || echo "Wget exited with code $? (non-fatal)" \
-             http://dtmb.saoing.com/  # 显式指定子域名入口
+             http://www.saoing.com/ 2>&1 | tee wget.log || echo "Wget exited with code $? (non-fatal)" 
+             ## http://dtmb.saoing.com/  # 显式指定子域名入口
              
         # 强制创建空目录（即使下载失败）
         touch $DIR_NAME/.gitkeep
