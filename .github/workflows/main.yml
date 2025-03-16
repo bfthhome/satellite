@@ -4,7 +4,8 @@ on:
   repository_dispatch:
   workflow_dispatch:
   schedule:
-    - cron: '0 0 * * *'
+    # 调整为 UTC 时间每天 00:05 运行（对应北京时间 08:05）
+    - cron: '5 0 * * *'
 
 jobs:
   crawl-and-notify:
@@ -21,23 +22,44 @@ jobs:
         # 显式配置令牌权限
         token: ${{ secrets.GITHUB_TOKEN }}
         persist-credentials: true
-        
-    - name: Set up directory
+
+    - name: Setup timezone
       run: |
-        DIR_NAME="webpages-$(date +'%Y%m%d')"
+        # 设置时区为上海（确保日期计算准确）
+        sudo timedatectl set-timezone Asia/Shanghai
+        
+    - name: Create daily directory
+      run: |
+        # 生成带时区的日期（格式：webpages-YYYYMMDD）
+        DIR_NAME="webpages-$(TZ='Asia/Shanghai' date +'%Y%m%d')"
         echo "DIR_NAME=$DIR_NAME" >> $GITHUB_ENV
+        echo "当前日期：$(TZ='Asia/Shanghai' date)"
+        echo "生成目录：$DIR_NAME"
         mkdir -p $DIR_NAME
+
+    - name: Clean wget cache
+      run: |
+        # 清除历史缓存文件
+        rm -f ~/.wget-hsts
         
     - name: Crawl website (with debug)
       run: |
-        # 添加调试参数和错误处理
+        # 添加调试参数和错误处理 # 强制重新下载所有内容
         wget --debug \
              --mirror \
              --convert-links \
              --adjust-extension \
              --page-requisites \
              --no-parent \
+             --timestamping \  # 保留时间戳比较功能
+             --no-use-server-timestamps \  # 不使用服务器时间戳
+             --no-cache \  # 禁用缓存
+             --no-hsts \  # 禁用HSTS缓存
+             --no-verbose \
              --tries=3 \
+             --wait=2 \
+             --random-wait \
+             --execute robots=off \
              --timeout=30 \
              --waitretry=5 \
              --retry-connrefused \
@@ -65,6 +87,13 @@ jobs:
         git add $DIR_NAME
         git commit --allow-empty -m "Add crawl attempt: $DIR_NAME"
         git push
+
+    - name: Verification
+      run: |
+        echo "验证目录结构："
+        ls -lhd webpages-*
+        echo "当天目录内容："
+        ls -l $DIR_NAME
         
     - name: Send Telegram notification
       env:
