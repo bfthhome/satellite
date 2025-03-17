@@ -1,9 +1,9 @@
 name: Daily Website Crawl Gemini5
 
 on:
-  schedule:
+  #schedule:
     # Runs at 00:05 UTC every day (08:05 Beijing Time)
-    - cron: '5 0 * * *'
+  #  - cron: '5 0 * * *'
   workflow_dispatch:  # Allows manual triggering
 
 jobs:
@@ -50,7 +50,7 @@ jobs:
                -P "$DIR_NAME" \
                "http://www.saoing.com/" 2>&1 | tee main-wget.log
           echo "Wget complete for main domain. Exit code: $?"
-          #touch "$MAIN_DIR/.gitkeep"
+          touch "$MAIN_DIR/.gitkeep"
 
       - name: Set up sub domain directory
         run: |
@@ -78,7 +78,7 @@ jobs:
                -P "$SUB_DIR" \
                "http://dtmb.saoing.com/" 2>&1 | tee sub-wget.log
           echo "Wget complete for sub domain. Exit code: $?"
-          #touch "$SUB_DIR/.gitkeep"
+          touch "$SUB_DIR/.gitkeep"
 
       - name: Check if any files were downloaded
         id: check_files
