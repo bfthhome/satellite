@@ -30,7 +30,7 @@ jobs:
 
     - name: Force craw website
       run: |
-        # 强制下载所有内容（即使未修改）
+        # 关键修复参数组合
         wget --mirror \
              --convert-links \
              --adjust-extension \
@@ -39,34 +39,30 @@ jobs:
              --no-check-certificate \
              --user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" \
              --retry-on-http-error=403,429,500-599 \
-             --tries=5 \
+             --tries=3 \
              --wait=2 \
              --random-wait \
              --span-hosts \
-             --domains saoing.com \
-             --no-iri \
+             --domains saoing.com,www.saoing.com \  # 显式声明主域名
              --restrict-file-names=windows \
+             --reject-regex '%20|\s' \  # 新增关键过滤规则
+             --no-directories \  # 禁用自动目录生成
              -e robots=off \
-             --no-if-modified-since \  # 新增关键参数
-             --timestamping \  # 保留时间戳功能但禁用304检查
              -P $DIR_NAME \
-             http://www.saoing.com/ 2>&1 | tee wget.log
+             http://www.saoing.com/ 2>&1 | tee wget.log || echo "[非致命错误] wget退出码：$?"
 
-        # 强制生成标记文件（兼容htm/html）
-        touch $DIR_NAME/www.saoing.com/.crawl_success || true
-        echo "目录内容验证："
-        ls -l $DIR_NAME/www.saoing.com/index.*  # 显示实际文件名
+        # 强制生成验证文件
+        touch $DIR_NAME/www.saoing.com/.crawl_marker
 
     - name: Validate content
       run: |
-        echo "目录结构验证："
-        # 兼容htm和html两种扩展名
-        if [ -f "$DIR_NAME/www.saoing.com/index.htm" ] || [ -f "$DIR_NAME/www.saoing.com/index.html" ]; then
+        echo "==== 目录结构验证 ===="
+        ls -lR $DIR_NAME || true
+        
+        # 智能文件检测
+        if [ -n "$(find $DIR_NAME -name 'index.*' -o -name '*.htm*')" ]; then
           echo "检测到有效内容"
           echo "CONTENT_VALID=1" >> $GITHUB_ENV
-          # 统一文件命名
-          [ -f "$DIR_NAME/www.saoing.com/index.htm" ] && \
-          mv $DIR_NAME/www.saoing.com/index.htm $DIR_NAME/www.saoing.com/index.html
         else
           echo "未找到核心文件"
           echo "CONTENT_VALID=0" >> $GITHUB_ENV
@@ -91,22 +87,23 @@ jobs:
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
       run: |
-        # 智能状态判断
+        # 高级状态判断
         if [ "$CONTENT_VALID" -eq 1 ]; then
           STATUS="✅ 内容抓取成功"
-          FILE_INFO="首页文件存在（$(ls $DIR_NAME/www.saoing.com/index.*)）"
+          FILE_COUNT=$(find $DIR_NAME -type f | wc -l)
+          FILE_INFO="文件数量: ${FILE_COUNT} | 最新文件: $(find $DIR_NAME -type f -printf '%Tb %Td %TH:%TM\n' | sort -r | head -1)"
         else
           STATUS="⚠️ 关键文件缺失"
-          FILE_INFO="未找到 index.htm/html"
+          FILE_INFO="详细错误：$(grep -i 'error\|failed' wget.log | tail -n 3)"
         fi
 
         MESSAGE="<b>网站抓取报告</b>%0A"
         MESSAGE+="- 状态: ${STATUS}%0A"
-        MESSAGE+="- 日期: $(TZ='Asia/Shanghai' date +'%Y-%m-%d %H:%M')%0A"
-        MESSAGE+="- 目录: <code>${DIR_NAME}</code>%0A"
-        MESSAGE+="- 存储: ${FILE_INFO}%0A"
-        MESSAGE+="- 提交状态: ${COMMIT_STATUS}%0A"
-        MESSAGE+="<a href='https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID'>📜 查看完整日志</a>"
+        MESSAGE+="- 执行时间: $(TZ='Asia/Shanghai' date +'%Y-%m-%d %H:%M:%S')%0A"
+        MESSAGE+="- 存储目录: <code>${DIR_NAME}</code>%0A"
+        MESSAGE+="- ${FILE_INFO}%0A"
+        MESSAGE+="- 提交结果: ${COMMIT_STATUS}%0A"
+        MESSAGE+="<a href='https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID'>🛠️ 调试日志</a>"
 
         curl -s -X POST \
           "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
