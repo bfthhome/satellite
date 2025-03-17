@@ -61,14 +61,19 @@ jobs:
           FILES_DOWNLOADED=$(find "$DIR_NAME" -type f -not -name ".gitkeep" | wc -l)
           echo "files_downloaded=$FILES_DOWNLOADED" >> $GITHUB_OUTPUT
 
+
       - name: Commit and push changes
         if: steps.check_files.outputs.files_downloaded != '0'  # Skip commit if no files
         run: |
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
-          git add "$DIR_NAME"
+
+          # Add all files including wget.log
+          git add .
+
           git commit -m "Daily crawl: Update $DIR_NAME"
           git push origin HEAD:${GITHUB_REF}
+
 
       - name: Send Telegram notification
         env:
