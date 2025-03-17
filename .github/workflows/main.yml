@@ -1,9 +1,11 @@
 name: Ultimate Website Crawler （Main） 
 
 on:
+  repository_dispatch:
   workflow_dispatch:
-  schedule:
-    - cron: '5 0 * * *'
+  #schedule:
+    # Runs at 00:05 UTC every Saturday
+   # - cron: '5 0 * * 6'
 
 jobs:
   crawl-and-notify:
