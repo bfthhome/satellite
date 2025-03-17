@@ -48,8 +48,8 @@ jobs:
              --adjust-extension \
              --page-requisites \
              --no-parent \
-             --no-robots \  # 忽略 robots.txt
-             --level=inf \    # 删除递归深度限制
+             --no-robots \
+             --level=inf \
              --tries=3 \
              --timeout=30 \
              --waitretry=5 \
