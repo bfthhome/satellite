@@ -1,118 +1,111 @@
-name: Daily Website Crawl Main
+name: Daily Website Crawl
 
 on:
-  repository_dispatch:
   workflow_dispatch:
   schedule:
-    # 调整为 UTC 时间每天 00:05 运行（对应北京时间 08:05）
     - cron: '5 0 * * *'
 
 jobs:
   crawl-and-notify:
     runs-on: ubuntu-latest
-
-    # 添加权限声明
     permissions:
       contents: write
-      
+
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
       with:
-        # 显式配置令牌权限
         token: ${{ secrets.GITHUB_TOKEN }}
         persist-credentials: true
 
     - name: Setup timezone
-      run: |
-        # 设置时区为上海（确保日期计算准确）
-        sudo timedatectl set-timezone Asia/Shanghai
-        
+      run: sudo timedatectl set-timezone Asia/Shanghai
+
     - name: Create daily directory
       run: |
-        # 生成带时区的日期（格式：webpages-YYYYMMDD）
         DIR_NAME="webpages-$(TZ='Asia/Shanghai' date +'%Y%m%d')"
         echo "DIR_NAME=$DIR_NAME" >> $GITHUB_ENV
-        echo "当前日期：$(TZ='Asia/Shanghai' date)"
-        echo "生成目录：$DIR_NAME"
         mkdir -p $DIR_NAME
+        echo "目录已创建：$DIR_NAME"
 
-    - name: Clean wget cache
+    - name: Force craw website
       run: |
-        # 清除历史缓存文件
-        rm -f ~/.wget-hsts
-        
-    - name: Crawl website (with debug)
-      run: |
-        # 添加调试参数和错误处理 # 强制重新下载所有内容
-        wget --debug \
-             --mirror \
+        wget --mirror \
              --convert-links \
              --adjust-extension \
              --page-requisites \
              --no-parent \
-             --timestamping \  # 保留时间戳比较功能
-             --no-use-server-timestamps \  # 不使用服务器时间戳
-             --no-cache \  # 禁用缓存
-             --no-hsts \  # 禁用HSTS缓存
-             --no-verbose \
-             --tries=3 \
+             --no-check-certificate \
+             --user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" \
+             --retry-on-http-error=403,429,500-599 \
+             --tries=5 \
              --wait=2 \
              --random-wait \
-             --execute robots=off \
-             --timeout=30 \
-             --waitretry=5 \
-             --retry-connrefused \
-             --user-agent="Mozilla/5.0 (compatible; GitHub-Actions-Crawler)" \
-             --no-check-certificate \
+             --span-hosts \
+             --domains saoing.com \
+             --no-iri \
+             --restrict-file-names=windows \
+             -e robots=off \
              -P $DIR_NAME \
-             http://www.saoing.com/ 2>&1 | tee wget.log || echo "Wget exited with code $? (non-fatal)"
-        # 强制创建空目录（即使下载失败）
-        touch $DIR_NAME/.gitkeep
-        
-    - name: Check directory content
+             http://www.saoing.com/ 2>&1 | tee wget.log
+
+        # 强制生成标记文件
+        touch $DIR_NAME/www.saoing.com/.crawl_success || true
+
+    - name: Validate content
       run: |
-        # 检查目录是否生成内容
-        echo "Directory contents:"
+        echo "目录结构验证："
         ls -lR $DIR_NAME || true
         
+        # 核心文件检查
+        if [ -f "$DIR_NAME/www.saoing.com/index.htm" ]; then
+          echo "检测到有效内容"
+          echo "CONTENT_VALID=1" >> $GITHUB_ENV
+        else
+          echo "未找到核心文件"
+          echo "CONTENT_VALID=0" >> $GITHUB_ENV
+        fi
+
     - name: Commit changes
       run: |
         git config --global user.name "GitHub Actions"
         git config --global user.email "actions@github.com"
-        # 强制设置远程仓库地址（关键修复）
         git remote set-url origin https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
-        
-        # 强制提交（允许空提交）
-        git add $DIR_NAME
-        git commit --allow-empty -m "Add crawl attempt: $DIR_NAME"
-        git push
 
-    - name: Verification
-      run: |
-        echo "验证目录结构："
-        ls -lhd webpages-*
-        echo "当天目录内容："
-        ls -l $DIR_NAME
-        
+        git add $DIR_NAME
+        if git commit -m "Add crawl: $DIR_NAME [$(date +'%m%d-%H%M')]"; then
+          git push
+          echo "COMMIT_STATUS=success" >> $GITHUB_ENV
+        else
+          echo "COMMIT_STATUS=no_changes" >> $GITHUB_ENV
+        fi
+
     - name: Send Telegram notification
       env:
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        #TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
-        #TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}    
       run: |
-        # 添加执行状态判断
-        if [ -s "$DIR_NAME/index.htm" ]; then
-          STATUS="✅ 成功"
-          FILE_INFO=$(du -sh $DIR_NAME)
+        # 状态判断
+        if [ "$CONTENT_VALID" -eq 1 ]; then
+          STATUS="✅ 内容抓取成功"
+          FILE_INFO="首页存在 | $(du -sh $DIR_NAME)"
         else
-          STATUS="⚠️ 部分失败"
-          FILE_INFO="无有效内容"
+          STATUS="⚠️ 关键文件缺失"
+          FILE_INFO="未找到 index.htm"
         fi
-        MESSAGE="网站抓取状态：$STATUS%0A- 日期: $(date +'%Y-%m-%d')%0A- 目录: $DIR_NAME%0A- 文件情况: $FILE_INFO%0A- 日志: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
-        
+
+        # 构建消息
+        MESSAGE="<b>网站抓取报告</b>%0A"
+        MESSAGE+="- 状态: ${STATUS}%0A"
+        MESSAGE+="- 日期: $(TZ='Asia/Shanghai' date +'%Y-%m-%d %H:%M')%0A"
+        MESSAGE+="- 目录: <code>${DIR_NAME}</code>%0A"
+        MESSAGE+="- 存储: ${FILE_INFO}%0A"
+        MESSAGE+="- 提交状态: ${COMMIT_STATUS}%0A"
+        MESSAGE+="<a href='https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID'>📜 查看完整日志</a>"
+
         curl -s -X POST \
           "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
           -d chat_id="${TELEGRAM_CHAT_ID}" \
-          -d text="$MESSAGE"
+          -d text="${MESSAGE}" \
+          -d parse_mode="HTML" \
+          -d disable_web_page_preview="true"
