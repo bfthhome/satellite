@@ -1,0 +1,112 @@
+name: Daily Website Crawl Test2
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '5 0 * * *'
+
+jobs:
+  crawl-and-notify:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        persist-credentials: true
+
+    - name: Setup environment
+      run: |
+        sudo timedatectl set-timezone Asia/Shanghai
+        DIR_NAME="webpages-$(TZ='Asia/Shanghai' date +'%Y%m%d')"
+        echo "DIR_NAME=$DIR_NAME" >> $GITHUB_ENV
+        mkdir -p $DIR_NAME
+        echo "当前日期：$(TZ='Asia/Shanghai' date +'%Y-%m-%d %H:%M:%S')"
+
+    - name: Force craw website
+      run: |
+        # 终极解决方案参数组合
+        wget --mirror \
+             --convert-links \
+             --adjust-extension \
+             --page-requisites \
+             --no-parent \
+             --no-check-certificate \
+             --user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" \
+             --retry-on-http-error=403,429,500-599 \
+             --tries=3 \
+             --wait=2 \
+             --random-wait \
+             --span-hosts \
+             --domains saoing.com,www.saoing.com \
+             --restrict-file-names=windows \
+             --reject-regex '%20|^http://\s' \  # 严格过滤规则
+             --exclude-directories='/EIRP' \  # 排除问题目录
+             --no-directories \
+             --level=inf \
+             -e robots=off \
+             --no-verbose \
+             --debug \
+             -P $DIR_NAME \
+             http://www.saoing.com/ 2>&1 | tee wget.log || true
+
+        # 强制生成索引文件
+        find $DIR_NAME -type d -exec touch {}/.keep \;
+
+    - name: Validate content
+      run: |
+        echo "==== 最终验证 ===="
+        echo "主站文件检测："
+        ls $DIR_NAME/www.saoing.com/*.* || true
+        
+        # 智能内容检测
+        HTML_COUNT=$(find $DIR_NAME -name "*.htm*" | wc -l)
+        if [ $HTML_COUNT -gt 0 ]; then
+          echo "CONTENT_VALID=1" >> $GITHUB_ENV
+          echo "检测到 $HTML_COUNT 个网页文件"
+        else
+          echo "CONTENT_VALID=0" >> $GITHUB_ENV
+          echo "未找到有效网页内容"
+        fi
+
+    - name: Commit changes
+      run: |
+        git config --global user.name "GitHub Actions"
+        git config --global user.email "actions@github.com"
+        git remote set-url origin https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
+
+        git add $DIR_NAME
+        git commit --allow-empty -m "Auto crawl: $DIR_NAME" || echo "无新内容"
+        git push origin HEAD
+
+    - name: Send Telegram notification
+      env:
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      run: |
+        # 增强状态判断
+        if [ "$CONTENT_VALID" -eq 1 ]; then
+          STATUS="🟢 抓取成功"
+          FILE_INFO=$(find $DIR_NAME -type f | wc -l)
+          SAMPLE_FILE=$(find $DIR_NAME -name "*.htm*" | head -1)
+        else
+          STATUS="🔴 抓取失败"
+          FILE_INFO=$(grep -m3 'failed\|ERROR' wget.log)
+        fi
+
+        MESSAGE="<b>网站抓取报告</b>%0A"
+        MESSAGE+="▫️ 状态: ${STATUS}%0A"
+        MESSAGE+="▫️ 时间: $(TZ='Asia/Shanghai' date +'%m-%d %H:%M')%0A"
+        MESSAGE+="▫️ 文件数: ${FILE_INFO}%0A"
+        MESSAGE+="▫️ 示例文件: ${SAMPLE_FILE:-无}%0A"
+        MESSAGE+="<a href='https://github.com/$GITHUB_REPOSITORY/tree/main/$DIR_NAME'>📁 浏览目录</a>"
+
+        curl -s -X POST \
+          "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+          -d chat_id="${TELEGRAM_CHAT_ID}" \
+          -d text="${MESSAGE}" \
+          -d parse_mode="HTML" \
+          -d disable_web_page_preview="true"
