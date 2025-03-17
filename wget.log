@@ -1,0 +1,4 @@
+wget: unrecognized option '--no-robots'
+Usage: wget [OPTION]... [URL]...
+
+Try `wget --help' for more options.
