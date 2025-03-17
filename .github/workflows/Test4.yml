@@ -2,9 +2,10 @@ name: Daily Website Crawl Gemini
 
 on:
   schedule:
-    # Runs at 00:05 UTC every day (08:05 Beijing Time)
-    - cron: '5 0 * * *'
+    # Runs at 00:05 UTC every Saturday
+    - cron: '5 0 * * 6'
   workflow_dispatch:  # Allows manual triggering
+
 
 jobs:
   crawl-website:
