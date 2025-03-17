@@ -3,9 +3,9 @@ name: Daily Website Crawl DTMB
 on:
   repository_dispatch:
   workflow_dispatch:
-  schedule:
-    # 调整为 UTC 时间每天 00:05 运行（对应北京时间 08:05）
-    - cron: '5 0 * * *'
+  #schedule:
+    # Runs at 00:05 UTC every Saturday
+    #- cron: '5 0 * * 6'
 
 
 jobs:
