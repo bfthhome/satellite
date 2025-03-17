@@ -1,0 +1,123 @@
+name: Daily Website Crawl Gemini5
+
+on:
+  schedule:
+    # Runs at 00:05 UTC every day (08:05 Beijing Time)
+    - cron: '5 0 * * *'
+  workflow_dispatch:  # Allows manual triggering
+
+jobs:
+  crawl-website:
+    runs-on: ubuntu-latest
+
+    # Permissions required to push changes to the repository
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          persist-credentials: true
+
+      - name: Set up timezone
+        run: sudo timedatectl set-timezone Asia/Shanghai
+
+      • name: Set up main domain directory
+        run: |
+          DIR_NAME="webpages-$(TZ='Asia/Shanghai' date +'%Y%m%d%H%M')"
+          echo "DIR_NAME=$DIR_NAME" >> $GITHUB_ENV
+          echo "Creating directory: $DIR_NAME"  # Add debug output
+
+      • name: Crawl main domain (www.saoing.com)
+        run: |
+          # Create directory
+          mkdir -p "$DIR_NAME"
+
+          # Added --no-robots, --level=inf, retry parameters, user agent, error handling.
+          wget --mirror \
+               --convert-links \
+               --adjust-extension \
+               --page-requisites \
+               --level=inf \
+               --tries=3 \
+               --timeout=60 \
+               --waitretry=10 \
+               --retry-connrefused \
+               --user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/109.0" \
+               --no-check-certificate \
+               -P "$DIR_NAME" \
+               http://www.saoing.com/ 2>&1 | tee wget.log  # Tee output to log
+               "$(echo 'http://www.saoing.com/' | sed 's/[^a-zA-Z0-9._-]/%25/g')" 2>&1 | tee main-wget.log
+          echo "Wget complete for main domain. Exit code: $?"
+          touch "$MAIN_DIR/.gitkeep"
+
+      • name: Set up sub domain directory
+        run: |
+          SUB_DIR="dtmb-saoing-com-$(TZ='Asia/Shanghai' date +'%Y%m%d%H%M')"
+          echo "SUBDIR=$SUBDIR" >> $GITHUB_ENV
+          echo "Creating directory: $SUB_DIR"
+
+      • name: Crawl sub domain (dtmb.saoing.com)
+        run: |
+          # Create directory
+          mkdir -p "$SUB_DIR"
+
+          # Crawl sub domain
+          wget --mirror \
+               --convert-links \
+               --adjust-extension \
+               --page-requisites \
+               --level=inf \
+               --tries=3 \
+               --timeout=60 \
+               --waitretry=10 \
+               --retry-connrefused \
+               --user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/109.0" \
+               --no-check-certificate \
+               -P "$SUB_DIR" \
+               "$(echo 'http://dtmb.saoing.com/' | sed 's/[^a-zA-Z0-9._-]/%25/g')" 2>&1 | tee sub-wget.log
+          echo "Wget complete for sub domain. Exit code: $?"
+          touch "$SUB_DIR/.gitkeep"
+
+      - name: Check if any files were downloaded
+        id: check_files
+        run: |
+          MAIN_FILES=$(find "$MAIN_DIR" -type f -not -name ".gitkeep" | wc -l)
+          SUB_FILES=$(find "$SUB_DIR" -type f -not -name ".gitkeep" | wc -l)
+          echo "main_files=$MAIN_FILES" >> $GITHUB_OUTPUT
+          echo "sub_files=$SUB_FILES" >> $GITHUB_OUTPUT
+
+      - name: Commit and push changes
+        if: steps.check_files.outputs.main_files != '0' || steps.check_files.outputs.sub_files != '0'
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git add "$MAIN_DIR" "$SUB_DIR"
+          git commit -m "Daily crawl: Update $(echo "$MAIN_DIR $SUB_DIR")"
+          git push origin HEAD:${GITHUB_REF}
+
+      - name: Send Telegram notification
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          # Determine status based on files_downloaded output
+          MAIN_STATUS="✅ 主站成功"
+          SUB_STATUS="✅ 子站成功"
+          if [ "${{ steps.check_files.outputs.main_files }}" == "0" ]; then
+            MAIN_STATUS="⚠️ 主站失败"
+          fi
+          if [ "${{ steps.check_files.outputs.sub_files }}" == "0" ]; then
+            SUB_STATUS="⚠️ 子站失败"
+          fi
+
+          MAIN_FILE_INFO=$(du -sh "$MAIN_DIR")
+          SUB_FILE_INFO=$(du -sh "$SUB_DIR")
+
+          # Create the message
+          MESSAGE="网站抓取状态:%0A- $MAIN_STATUS%0A- $SUB_STATUS%0A- 主站目录: $MAIN_DIR%0A- 主站大小: $MAIN_FILE_INFO%0A- 子站目录: $SUB_DIR%0A- 子站大小: $SUB_FILE_INFO%0A- 日志: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+
+          # Send the Telegram notification
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" -d chat_id="${TELEGRAM_CHAT_ID}" -d text="$MESSAGE"
