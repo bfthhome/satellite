@@ -24,13 +24,13 @@ jobs:
       - name: Set up timezone
         run: sudo timedatectl set-timezone Asia/Shanghai
 
-      • name: Set up main domain directory
+      - name: Set up main domain directory
         run: |
           DIR_NAME="webpages-$(TZ='Asia/Shanghai' date +'%Y%m%d%H%M')"
           echo "DIR_NAME=$DIR_NAME" >> $GITHUB_ENV
           echo "Creating directory: $DIR_NAME"  # Add debug output
 
-      • name: Crawl main domain (www.saoing.com)
+      - name: Crawl main domain (www.saoing.com)
         run: |
           # Create directory
           mkdir -p "$DIR_NAME"
@@ -53,13 +53,13 @@ jobs:
           echo "Wget complete for main domain. Exit code: $?"
           touch "$MAIN_DIR/.gitkeep"
 
-      • name: Set up sub domain directory
+      - name: Set up sub domain directory
         run: |
           SUB_DIR="dtmb-saoing-com-$(TZ='Asia/Shanghai' date +'%Y%m%d%H%M')"
           echo "SUBDIR=$SUBDIR" >> $GITHUB_ENV
           echo "Creating directory: $SUB_DIR"
 
-      • name: Crawl sub domain (dtmb.saoing.com)
+      - name: Crawl sub domain (dtmb.saoing.com)
         run: |
           # Create directory
           mkdir -p "$SUB_DIR"
