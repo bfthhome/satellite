@@ -41,7 +41,6 @@ jobs:
                --adjust-extension \
                --page-requisites \
                --no-parent \
-               --no-robots \
                --level=inf \
                --tries=3 \
                --timeout=60 \
