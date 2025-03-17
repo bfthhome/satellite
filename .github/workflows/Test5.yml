@@ -48,8 +48,7 @@ jobs:
                --user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/109.0" \
                --no-check-certificate \
                -P "$DIR_NAME" \
-               http://www.saoing.com/ 2>&1 | tee wget.log  # Tee output to log
-               "$(echo 'http://www.saoing.com/' | sed 's/[^a-zA-Z0-9._-]/%25/g')" 2>&1 | tee main-wget.log
+               "http://www.saoing.com/" 2>&1 | tee main-wget.log
           echo "Wget complete for main domain. Exit code: $?"
           touch "$MAIN_DIR/.gitkeep"
 
@@ -77,7 +76,7 @@ jobs:
                --user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/109.0" \
                --no-check-certificate \
                -P "$SUB_DIR" \
-               "$(echo 'http://dtmb.saoing.com/' | sed 's/[^a-zA-Z0-9._-]/%25/g')" 2>&1 | tee sub-wget.log
+               "http://dtmb.saoing.com/" 2>&1 | tee sub-wget.log
           echo "Wget complete for sub domain. Exit code: $?"
           touch "$SUB_DIR/.gitkeep"
 
