@@ -36,6 +36,11 @@ jobs:
         mkdir -p $DIR_NAME
     - name: Crawl website (with debug)
       run: |
+        # 尝试删除 wget 缓存，仅当 ~/.wget-hsts 存在时 (更安全)
+        if [ -d ~/.wget-hsts ]; then
+          rm -rf ~/.wget-hsts/*
+        fi
+      
         # 添加调试参数和错误处理
         wget --debug \
              --mirror \
@@ -43,6 +48,8 @@ jobs:
              --adjust-extension \
              --page-requisites \
              --no-parent \
+             --no-robots \  # 忽略 robots.txt
+             --level=inf \    # 删除递归深度限制
              --tries=3 \
              --timeout=30 \
              --waitretry=5 \
@@ -76,13 +83,14 @@ jobs:
       env:
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        #TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
-        #TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}    
       run: |
         # 添加执行状态判断
-        if [ -s "$DIR_NAME/index.htm" ]; then
+        # Count files excluding .gitkeep
+        FILE_COUNT=$(find "$DIR_NAME" -type f -not -name ".gitkeep" | wc -l)
+
+        if [ "$FILE_COUNT" -gt 0 ]; then  # Check if the count is greater than 0
           STATUS="✅ 成功"
-          FILE_INFO=$(du -sh $DIR_NAME)
+          FILE_INFO=$(du -sh "$DIR_NAME")
         else
           STATUS="⚠️ 部分失败"
           FILE_INFO="无有效内容"
