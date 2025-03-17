@@ -23,7 +23,7 @@ jobs:
 
     - name: Create daily directory
       run: |
-        DIR_NAME="webpages-$(TZ='Asia/Shanghai' date +'%Y%m%d')"
+        DIR_NAME="webpage-$(TZ='Asia/Shanghai' date +'%Y%m%d')"
         echo "DIR_NAME=$DIR_NAME" >> $GITHUB_ENV
         mkdir -p $DIR_NAME
         echo "目录已创建：$DIR_NAME"
