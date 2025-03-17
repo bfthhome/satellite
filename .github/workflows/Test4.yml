@@ -41,8 +41,6 @@ jobs:
                --adjust-extension \
                --page-requisites \
                --level=inf \
-               --span-hosts \ 
-               --domains saoing.com,dtmb.saoing.com \ 
                --tries=3 \
                --timeout=60 \
                --waitretry=10 \
