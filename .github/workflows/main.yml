@@ -44,12 +44,12 @@ jobs:
              --span-hosts \
              --domains saoing.com,www.saoing.com \
              --restrict-file-names=windows \
-             --reject-regex '\s|%20|^http://[^/]*\s' \  # 多层过滤规则
-             --exclude-directories='/EIRP,/tmp' \  # 排除已知问题目录
+             --reject-regex '\s|%20|^http://[^/]*\s' \
+             --exclude-directories='/EIRP,/tmp' \
              --no-directories \
-             --level=5 \  # 限制递归深度
-             --quota=500m \  # 限制总下载量
-             --header="Accept: text/html,application/xhtml+xml" \  # 限制文件类型
+             --level=5 \
+             --quota=500m \
+             --header="Accept: text/html,application/xhtml+xml" \
              -e robots=off \
              --debug \
              -P $DIR_NAME \
