@@ -21,10 +21,10 @@ jobs:
     - name: Setup environment
       run: |
         sudo timedatectl set-timezone Asia/Shanghai
-        DIR_NAME="webpages-$(TZ='Asia/Shanghai' date +'%Y%m%d')"
+        DIR_NAME="webpages-$(date +'%Y%m%d')"
         echo "DIR_NAME=$DIR_NAME" >> $GITHUB_ENV
         mkdir -p $DIR_NAME
-        echo "当前日期：$(TZ='Asia/Shanghai' date +'%Y-%m-%d %H:%M:%S')"
+        echo "当前日期：$(date +'%Y-%m-%d %H:%M:%S')"
 
     - name: Force craw website
       run: |
@@ -43,8 +43,8 @@ jobs:
              --span-hosts \
              --domains saoing.com,www.saoing.com \
              --restrict-file-names=windows \
-             --reject-regex '%20|^http://\s' \  # 严格过滤规则
-             --exclude-directories='/EIRP' \  # 排除问题目录
+             --reject-regex '%20|^http://\s' \
+             --exclude-directories='/EIRP' \
              --no-directories \
              --level=inf \
              -e robots=off \
