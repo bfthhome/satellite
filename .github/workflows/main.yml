@@ -1,4 +1,4 @@
-name: Daily Website Crawl
+name: Daily Website Crawl （Main）
 
 on:
   workflow_dispatch:
@@ -30,6 +30,7 @@ jobs:
 
     - name: Force craw website
       run: |
+        # 强制下载所有内容（即使未修改）
         wget --mirror \
              --convert-links \
              --adjust-extension \
@@ -46,21 +47,26 @@ jobs:
              --no-iri \
              --restrict-file-names=windows \
              -e robots=off \
+             --no-if-modified-since \  # 新增关键参数
+             --timestamping \  # 保留时间戳功能但禁用304检查
              -P $DIR_NAME \
              http://www.saoing.com/ 2>&1 | tee wget.log
 
-        # 强制生成标记文件
+        # 强制生成标记文件（兼容htm/html）
         touch $DIR_NAME/www.saoing.com/.crawl_success || true
+        echo "目录内容验证："
+        ls -l $DIR_NAME/www.saoing.com/index.*  # 显示实际文件名
 
     - name: Validate content
       run: |
         echo "目录结构验证："
-        ls -lR $DIR_NAME || true
-        
-        # 核心文件检查
-        if [ -f "$DIR_NAME/www.saoing.com/index.htm" ]; then
+        # 兼容htm和html两种扩展名
+        if [ -f "$DIR_NAME/www.saoing.com/index.htm" ] || [ -f "$DIR_NAME/www.saoing.com/index.html" ]; then
           echo "检测到有效内容"
           echo "CONTENT_VALID=1" >> $GITHUB_ENV
+          # 统一文件命名
+          [ -f "$DIR_NAME/www.saoing.com/index.htm" ] && \
+          mv $DIR_NAME/www.saoing.com/index.htm $DIR_NAME/www.saoing.com/index.html
         else
           echo "未找到核心文件"
           echo "CONTENT_VALID=0" >> $GITHUB_ENV
@@ -85,16 +91,15 @@ jobs:
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
       run: |
-        # 状态判断
+        # 智能状态判断
         if [ "$CONTENT_VALID" -eq 1 ]; then
           STATUS="✅ 内容抓取成功"
-          FILE_INFO="首页存在 | $(du -sh $DIR_NAME)"
+          FILE_INFO="首页文件存在（$(ls $DIR_NAME/www.saoing.com/index.*)）"
         else
           STATUS="⚠️ 关键文件缺失"
-          FILE_INFO="未找到 index.htm"
+          FILE_INFO="未找到 index.htm/html"
         fi
 
-        # 构建消息
         MESSAGE="<b>网站抓取报告</b>%0A"
         MESSAGE+="- 状态: ${STATUS}%0A"
         MESSAGE+="- 日期: $(TZ='Asia/Shanghai' date +'%Y-%m-%d %H:%M')%0A"
