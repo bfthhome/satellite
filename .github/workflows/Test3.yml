@@ -59,18 +59,28 @@ jobs:
 
     - name: Validate content
       run: |
-        echo "目录结构验证："
-        # 兼容htm和html两种扩展名
-        if [ -f "$DIR_NAME/www.saoing.com/index.htm" ] || [ -f "$DIR_NAME/www.saoing.com/index.html" ]; then
-          echo "检测到有效内容"
-          echo "CONTENT_VALID=1" >> $GITHUB_ENV
-          # 统一文件命名
-          [ -f "$DIR_NAME/www.saoing.com/index.htm" ] && \
-          mv $DIR_NAME/www.saoing.com/index.htm $DIR_NAME/www.saoing.com/index.html
+        echo "==== 安全验证 ===="
+        # 禁用错误中断
+        set +e
+
+        echo "目录结构："
+        ls -l $DIR_NAME/www.saoing.com/
+    
+        # 检测实际存在的首页文件
+        if [ -f "$DIR_NAME/www.saoing.com/index.htm" ]; then
+          echo "检测到index.htm"
+          CONTENT_VALID=1
+        elif [ -f "$DIR_NAME/www.saoing.com/index.html" ]; then
+          echo "检测到index.html" 
+          CONTENT_VALID=1
         else
-          echo "未找到核心文件"
-          echo "CONTENT_VALID=0" >> $GITHUB_ENV
+          echo "未找到首页文件"
+          CONTENT_VALID=0
         fi
+
+        echo "CONTENT_VALID=$CONTENT_VALID" >> $GITHUB_ENV
+        # 恢复错误检测
+        set -e
 
     - name: Commit changes
       run: |
@@ -93,12 +103,13 @@ jobs:
       run: |
         # 智能状态判断
         if [ "$CONTENT_VALID" -eq 1 ]; then
-          STATUS="✅ 内容抓取成功"
-          FILE_INFO="首页文件存在（$(ls $DIR_NAME/www.saoing.com/index.*)）"
+          # 自动检测实际文件名
+          INDEX_FILE=$(ls $DIR_NAME/www.saoing.com/index.htm* 2>/dev/null | head -1)
+          STATUS="✅ 内容抓取成功（检测到：${INDEX_FILE##*/}）"
         else
           STATUS="⚠️ 关键文件缺失"
-          FILE_INFO="未找到 index.htm/html"
         fi
+
 
         MESSAGE="<b>网站抓取报告</b>%0A"
         MESSAGE+="- 状态: ${STATUS}%0A"
