@@ -18,19 +18,17 @@ jobs:
         token: ${{ secrets.GITHUB_TOKEN }}
         persist-credentials: true
 
-    - name: Setup timezone
-      run: sudo timedatectl set-timezone Asia/Shanghai
-
-    - name: Create daily directory
+    - name: Setup environment
       run: |
+        sudo timedatectl set-timezone Asia/Shanghai
         DIR_NAME="webpages-$(TZ='Asia/Shanghai' date +'%Y%m%d')"
         echo "DIR_NAME=$DIR_NAME" >> $GITHUB_ENV
         mkdir -p $DIR_NAME
-        echo "目录已创建：$DIR_NAME"
+        echo "当前日期：$(TZ='Asia/Shanghai' date +'%Y-%m-%d %H:%M:%S')"
 
     - name: Force craw website
       run: |
-        # 关键修复参数组合
+        # 终极解决方案参数组合
         wget --mirror \
              --convert-links \
              --adjust-extension \
@@ -43,29 +41,35 @@ jobs:
              --wait=2 \
              --random-wait \
              --span-hosts \
-             --domains saoing.com,www.saoing.com \  # 显式声明主域名
+             --domains saoing.com,www.saoing.com \
              --restrict-file-names=windows \
-             --reject-regex '%20|\s' \  # 新增关键过滤规则
-             --no-directories \  # 禁用自动目录生成
+             --reject-regex '%20|^http://\s' \  # 严格过滤规则
+             --exclude-directories='/EIRP' \  # 排除问题目录
+             --no-directories \
+             --level=inf \
              -e robots=off \
+             --no-verbose \
+             --debug \
              -P $DIR_NAME \
-             http://www.saoing.com/ 2>&1 | tee wget.log || echo "[非致命错误] wget退出码：$?"
+             http://www.saoing.com/ 2>&1 | tee wget.log || true
 
-        # 强制生成验证文件
-        touch $DIR_NAME/www.saoing.com/.crawl_marker
+        # 强制生成索引文件
+        find $DIR_NAME -type d -exec touch {}/.keep \;
 
     - name: Validate content
       run: |
-        echo "==== 目录结构验证 ===="
-        ls -lR $DIR_NAME || true
+        echo "==== 最终验证 ===="
+        echo "主站文件检测："
+        ls $DIR_NAME/www.saoing.com/*.* || true
         
-        # 智能文件检测
-        if [ -n "$(find $DIR_NAME -name 'index.*' -o -name '*.htm*')" ]; then
-          echo "检测到有效内容"
+        # 智能内容检测
+        HTML_COUNT=$(find $DIR_NAME -name "*.htm*" | wc -l)
+        if [ $HTML_COUNT -gt 0 ]; then
           echo "CONTENT_VALID=1" >> $GITHUB_ENV
+          echo "检测到 $HTML_COUNT 个网页文件"
         else
-          echo "未找到核心文件"
           echo "CONTENT_VALID=0" >> $GITHUB_ENV
+          echo "未找到有效网页内容"
         fi
 
     - name: Commit changes
@@ -75,35 +79,30 @@ jobs:
         git remote set-url origin https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
 
         git add $DIR_NAME
-        if git commit -m "Add crawl: $DIR_NAME [$(date +'%m%d-%H%M')]"; then
-          git push
-          echo "COMMIT_STATUS=success" >> $GITHUB_ENV
-        else
-          echo "COMMIT_STATUS=no_changes" >> $GITHUB_ENV
-        fi
+        git commit --allow-empty -m "Auto crawl: $DIR_NAME" || echo "无新内容"
+        git push origin HEAD
 
     - name: Send Telegram notification
       env:
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
       run: |
-        # 高级状态判断
+        # 增强状态判断
         if [ "$CONTENT_VALID" -eq 1 ]; then
-          STATUS="✅ 内容抓取成功"
-          FILE_COUNT=$(find $DIR_NAME -type f | wc -l)
-          FILE_INFO="文件数量: ${FILE_COUNT} | 最新文件: $(find $DIR_NAME -type f -printf '%Tb %Td %TH:%TM\n' | sort -r | head -1)"
+          STATUS="🟢 抓取成功"
+          FILE_INFO=$(find $DIR_NAME -type f | wc -l)
+          SAMPLE_FILE=$(find $DIR_NAME -name "*.htm*" | head -1)
         else
-          STATUS="⚠️ 关键文件缺失"
-          FILE_INFO="详细错误：$(grep -i 'error\|failed' wget.log | tail -n 3)"
+          STATUS="🔴 抓取失败"
+          FILE_INFO=$(grep -m3 'failed\|ERROR' wget.log)
         fi
 
         MESSAGE="<b>网站抓取报告</b>%0A"
-        MESSAGE+="- 状态: ${STATUS}%0A"
-        MESSAGE+="- 执行时间: $(TZ='Asia/Shanghai' date +'%Y-%m-%d %H:%M:%S')%0A"
-        MESSAGE+="- 存储目录: <code>${DIR_NAME}</code>%0A"
-        MESSAGE+="- ${FILE_INFO}%0A"
-        MESSAGE+="- 提交结果: ${COMMIT_STATUS}%0A"
-        MESSAGE+="<a href='https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID'>🛠️ 调试日志</a>"
+        MESSAGE+="▫️ 状态: ${STATUS}%0A"
+        MESSAGE+="▫️ 时间: $(TZ='Asia/Shanghai' date +'%m-%d %H:%M')%0A"
+        MESSAGE+="▫️ 文件数: ${FILE_INFO}%0A"
+        MESSAGE+="▫️ 示例文件: ${SAMPLE_FILE:-无}%0A"
+        MESSAGE+="<a href='https://github.com/$GITHUB_REPOSITORY/tree/main/$DIR_NAME'>📁 浏览目录</a>"
 
         curl -s -X POST \
           "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
