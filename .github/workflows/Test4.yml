@@ -36,11 +36,9 @@ jobs:
           mkdir -p "$DIR_NAME"
 
           # Added --no-robots, --level=inf, retry parameters, user agent, error handling.
-          wget --mirror \
-               --convert-links \
+          wget --convert-links \
                --adjust-extension \
                --page-requisites \
-               --no-parent \
                --level=inf \
                --tries=3 \
                --timeout=60 \
@@ -49,6 +47,7 @@ jobs:
                --user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/109.0" \
                --no-check-certificate \
                -P "$DIR_NAME" \
+               --domains saoing.com,dtmb.saoing.com \ 
                http://www.saoing.com/ 2>&1 | tee wget.log  # Tee output to log
           echo "Wget complete.  Exit code: $?"
           # Ensure an empty commit is created if nothing was downloaded.
